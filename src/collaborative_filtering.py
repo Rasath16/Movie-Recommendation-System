@@ -33,8 +33,14 @@ class UserBasedCF:
             
             elif metric == 'pearson':
                 if np.sum(common) > 1:
-                    corr, _ = pearsonr(user_ratings[common], other_ratings[common])
-                    similarities[i] = corr if not np.isnan(corr) else 0
+                    user_common = user_ratings[common]
+                    other_common = other_ratings[common]
+                    # Check for constant arrays (std = 0)
+                    if np.std(user_common) > 0 and np.std(other_common) > 0:
+                        corr, _ = pearsonr(user_common, other_common)
+                        similarities[i] = corr if not np.isnan(corr) else 0
+                    else:
+                        similarities[i] = 0
         
         return similarities
     
