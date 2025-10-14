@@ -1,4 +1,5 @@
-"""
+           # Display search resul
+""""
 Movie Recommendation System - Streamlit App
 Interactive web application for movie recommendations
 """
@@ -36,7 +37,7 @@ st.markdown("""
         margin-bottom: 2rem;
     }
     .metric-card {
-        background-color: ff0000;
+        background-color: #f0f2f6;
         padding: 1.5rem;
         border-radius: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -121,6 +122,26 @@ def get_user_rated_movies(user_id, n=5):
     """Get movies rated by user"""
     user_ratings = ratings[ratings['user_id'] == user_id].sort_values('rating', ascending=False).head(n)
     return user_ratings
+
+def get_movie_poster(title, year=None):
+    """Get movie poster from OMDB API or return placeholder"""
+    # For demo purposes, return a placeholder
+    # In production, you would use: http://www.omdbapi.com/?apikey=YOUR_KEY&t=TITLE
+    return f"https://via.placeholder.com/300x450/667eea/ffffff?text={title[:20].replace(' ', '+')}"
+
+def get_similar_movies(movie_id, n=10):
+    """Get similar movies based on item similarity"""
+    if movie_id not in item_similarity_df.index:
+        return []
+    
+    similar_movies = item_similarity_df[movie_id].sort_values(ascending=False)[1:n+1]
+    return similar_movies.index.tolist()
+
+def search_movies(query):
+    """Search movies by title"""
+    query_lower = query.lower()
+    results = movies[movies['title'].str.lower().str.contains(query_lower, na=False)]
+    return results
 
 # ============================================================================
 # SIDEBAR
@@ -230,82 +251,305 @@ if page == "🏠 Home":
 
 elif page == "🎬 Get Recommendations":
     st.markdown("## 🎬 Get Your Movie Recommendations")
-    st.markdown("Select a user ID to see personalized movie recommendations")
     
-    col1, col2 = st.columns([1, 2])
+    # Add tabs for different recommendation modes
+    rec_mode = st.radio(
+        "Choose Recommendation Mode:",
+        ["👤 User-Based Recommendations", "🎥 Movie-Based Recommendations (For You!)"],
+        horizontal=True
+    )
     
-    with col1:
-        user_id = st.selectbox(
-            "Select User ID",
-            options=sorted(ratings['user_id'].unique()),
-            index=0
+    st.markdown("---")
+    
+    # ========================================================================
+    # MODE 1: USER-BASED RECOMMENDATIONS
+    # ========================================================================
+    if rec_mode == "👤 User-Based Recommendations":
+        st.markdown("### Select a user to see personalized recommendations")
+        
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            user_id = st.selectbox(
+                "Select User ID",
+                options=sorted(ratings['user_id'].unique()),
+                index=0
+            )
+            
+            num_recommendations = st.slider(
+                "Number of Recommendations",
+                min_value=5,
+                max_value=20,
+                value=10
+            )
+            
+            show_posters = st.checkbox("Show Movie Posters", value=True)
+            
+            if st.button("🎯 Get Recommendations", type="primary", key="user_rec"):
+                st.session_state.show_user_recommendations = True
+                st.session_state.user_id = user_id
+                st.session_state.num_recommendations = num_recommendations
+                st.session_state.show_posters = show_posters
+        
+        if 'show_user_recommendations' in st.session_state and st.session_state.show_user_recommendations:
+            st.markdown("---")
+            
+            # Show user's rated movies
+            st.markdown(f"### 🎬 User {st.session_state.user_id}'s Top Rated Movies")
+            user_rated = get_user_rated_movies(st.session_state.user_id, 5)
+            
+            if len(user_rated) > 0:
+                cols = st.columns(5)
+                for idx, (_, movie_row) in enumerate(user_rated.iterrows()):
+                    movie_info = get_movie_info(movie_row['item_id'])
+                    if movie_info is not None:
+                        with cols[idx]:
+                            if st.session_state.show_posters:
+                                st.image(get_movie_poster(movie_info['title']), use_container_width=True)
+                            st.markdown(f"**{movie_info['title'][:30]}**")
+                            st.caption(f"⭐ {movie_row['rating']:.1f}/5")
+            
+            st.markdown("---")
+            
+            # Generate recommendations
+            st.markdown(f"### 🎯 Recommended Movies for User {st.session_state.user_id}")
+            
+            with st.spinner("Generating recommendations..."):
+                recommended_ids = item_based_recommendations(st.session_state.user_id, st.session_state.num_recommendations)
+            
+            # Display recommendations in grid if posters enabled
+            if st.session_state.show_posters:
+                # Grid layout for posters
+                cols_per_row = 5
+                for i in range(0, len(recommended_ids), cols_per_row):
+                    cols = st.columns(cols_per_row)
+                    for j, movie_id in enumerate(recommended_ids[i:i+cols_per_row]):
+                        movie_info = get_movie_info(movie_id)
+                        if movie_info is not None:
+                            with cols[j]:
+                                st.image(get_movie_poster(movie_info['title']), use_container_width=True)
+                                st.markdown(f"**{movie_info['title']}**")
+                                
+                                # Get genre info
+                                genre_cols = ['Action', 'Adventure', 'Animation', 'Children', 
+                                             'Comedy', 'Crime', 'Documentary', 'Drama', 'Fantasy',
+                                             'Film-Noir', 'Horror', 'Musical', 'Mystery', 'Romance', 
+                                             'Sci-Fi', 'Thriller', 'War', 'Western']
+                                genres = [g for g in genre_cols if movie_info[g] == 1]
+                                genre_str = ", ".join(genres[:2]) if genres else "Unknown"
+                                
+                                # Get average rating
+                                movie_ratings = ratings[ratings['item_id'] == movie_id]
+                                avg_rating = movie_ratings['rating'].mean() if len(movie_ratings) > 0 else 0
+                                
+                                st.caption(f"🎭 {genre_str}")
+                                st.caption(f"⭐ {avg_rating:.1f}/5")
+            else:
+                # List layout
+                for i, movie_id in enumerate(recommended_ids, 1):
+                    movie_info = get_movie_info(movie_id)
+                    if movie_info is not None:
+                        # Get genre info
+                        genre_cols = ['Action', 'Adventure', 'Animation', 'Children', 
+                                     'Comedy', 'Crime', 'Documentary', 'Drama', 'Fantasy',
+                                     'Film-Noir', 'Horror', 'Musical', 'Mystery', 'Romance', 
+                                     'Sci-Fi', 'Thriller', 'War', 'Western']
+                        genres = [g for g in genre_cols if movie_info[g] == 1]
+                        genre_str = ", ".join(genres[:3]) if genres else "Unknown"
+                        
+                        # Get average rating
+                        movie_ratings = ratings[ratings['item_id'] == movie_id]
+                        avg_rating = movie_ratings['rating'].mean() if len(movie_ratings) > 0 else 0
+                        num_ratings = len(movie_ratings)
+                        
+                        with st.container():
+                            col1, col2, col3 = st.columns([0.5, 3, 1])
+                            with col1:
+                                st.markdown(f"### {i}")
+                            with col2:
+                                st.markdown(f"**{movie_info['title']}**")
+                                st.caption(f"🎭 {genre_str}")
+                            with col3:
+                                st.metric("Avg Rating", f"{avg_rating:.1f}⭐", f"{num_ratings} ratings")
+                            st.markdown("---")
+    
+    # ========================================================================
+    # MODE 2: MOVIE-BASED RECOMMENDATIONS (NEW USER)
+    # ========================================================================
+    else:
+        st.markdown("### 🎬 Tell us what you like, and we'll recommend similar movies!")
+        st.info("👋 New here? No problem! Just search for a movie you like and get personalized recommendations.")
+        
+        # Search box
+        search_query = st.text_input(
+            "🔍 Search for a movie you like",
+            placeholder="e.g., Toy Story, Star Wars, Titanic, The Matrix...",
+            key="movie_search",
+            help="Type any movie title to search"
         )
         
-        num_recommendations = st.slider(
-            "Number of Recommendations",
-            min_value=5,
-            max_value=20,
-            value=10
-        )
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            num_similar = st.slider(
+                "Number of Recommendations",
+                min_value=5,
+                max_value=20,
+                value=12,
+                key="num_similar"
+            )
+        with col2:
+            show_posters_movie = st.checkbox("Show Movie Posters", value=True, key="posters_movie")
         
-        if st.button("🎯 Get Recommendations", type="primary"):
-            st.session_state.show_recommendations = True
-    
-    if 'show_recommendations' in st.session_state and st.session_state.show_recommendations:
-        st.markdown("---")
-        
-        # Show user's rated movies
-        st.markdown(f"### 🎬 User {user_id}'s Top Rated Movies")
-        user_rated = get_user_rated_movies(user_id, 5)
-        
-        if len(user_rated) > 0:
-            cols = st.columns(5)
-            for idx, (_, movie_row) in enumerate(user_rated.iterrows()):
-                movie_info = get_movie_info(movie_row['item_id'])
-                if movie_info is not None:
-                    with cols[idx]:
-                        st.markdown(f"""
-                        <div class="movie-card">
-                            <b>{movie_info['title'][:30]}</b><br>
-                            ⭐ {movie_row['rating']:.1f}/5
-                        </div>
-                        """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Generate recommendations
-        st.markdown(f"### 🎯 Recommended Movies for User {user_id}")
-        
-        with st.spinner("Generating recommendations..."):
-            recommended_ids = item_based_recommendations(user_id, num_recommendations)
-        
-        # Display recommendations
-        for i, movie_id in enumerate(recommended_ids, 1):
-            movie_info = get_movie_info(movie_id)
-            if movie_info is not None:
-                # Get genre info
-                genre_cols = ['Action', 'Adventure', 'Animation', 'Children', 
-                             'Comedy', 'Crime', 'Documentary', 'Drama', 'Fantasy',
-                             'Film-Noir', 'Horror', 'Musical', 'Mystery', 'Romance', 
-                             'Sci-Fi', 'Thriller', 'War', 'Western']
-                genres = [g for g in genre_cols if movie_info[g] == 1]
-                genre_str = ", ".join(genres[:3]) if genres else "Unknown"
+        if search_query:
+            # Search for movies
+            search_results = search_movies(search_query)
+            
+            if len(search_results) == 0:
+                st.warning("❌ No movies found. Try a different search term.")
+                st.info("💡 Tip: Try searching for popular movies like 'Star Wars', 'Jurassic Park', or 'Forrest Gump'")
+            else:
+                st.markdown("---")
+                st.success(f"✅ Found {len(search_results)} movie(s) matching '{search_query}'")
                 
-                # Get average rating
-                movie_ratings = ratings[ratings['item_id'] == movie_id]
-                avg_rating = movie_ratings['rating'].mean() if len(movie_ratings) > 0 else 0
-                num_ratings = len(movie_ratings)
+                # Display search results for selection
+                st.markdown("### 🎯 Select Your Movie")
                 
-                with st.container():
-                    col1, col2, col3 = st.columns([0.5, 3, 1])
-                    with col1:
-                        st.markdown(f"### {i}")
-                    with col2:
-                        st.markdown(f"**{movie_info['title']}**")
-                        st.caption(f"🎭 {genre_str}")
-                    with col3:
-                        st.metric("Avg Rating", f"{avg_rating:.1f}⭐", f"{num_ratings} ratings")
+                # Show search results with posters
+                if show_posters_movie and len(search_results) <= 10:
+                    # Grid view for few results
+                    cols_per_row = 5
+                    for i in range(0, min(len(search_results), 10), cols_per_row):
+                        cols = st.columns(cols_per_row)
+                        for j, (idx, movie) in enumerate(list(search_results.iterrows())[i:i+cols_per_row]):
+                            with cols[j]:
+                                st.image(get_movie_poster(movie['title']), use_container_width=True)
+                                if st.button(f"Select", key=f"select_{movie['movie_id']}", use_container_width=True):
+                                    st.session_state.selected_movie_id = movie['movie_id']
+                                    st.session_state.selected_movie_title = movie['title']
+                                st.caption(movie['title'][:40])
+                else:
+                    # Dropdown for many results
+                    movie_options = {f"{row['title']} ({row['movie_id']})": row['movie_id'] 
+                                   for _, row in search_results.iterrows()}
+                    selected_movie_display = st.selectbox(
+                        "Choose a movie:",
+                        options=list(movie_options.keys()),
+                        key="movie_selector"
+                    )
+                    
+                    if st.button("🎬 Select This Movie", type="primary"):
+                        st.session_state.selected_movie_id = movie_options[selected_movie_display]
+                        selected_movie = search_results[search_results['movie_id'] == st.session_state.selected_movie_id].iloc[0]
+                        st.session_state.selected_movie_title = selected_movie['title']
+                
+                # Show recommendations for selected movie
+                if 'selected_movie_id' in st.session_state:
                     st.markdown("---")
+                    selected_movie = movies[movies['movie_id'] == st.session_state.selected_movie_id].iloc[0]
+                    
+                    # Display selected movie info
+                    st.markdown("### 🎬 You Selected:")
+                    col1, col2 = st.columns([1, 3])
+                    
+                    with col1:
+                        if show_posters_movie:
+                            st.image(get_movie_poster(selected_movie['title']), use_container_width=True)
+                    
+                    with col2:
+                        st.markdown(f"## {selected_movie['title']}")
+                        
+                        # Genre info
+                        genre_cols = ['Action', 'Adventure', 'Animation', 'Children', 
+                                     'Comedy', 'Crime', 'Documentary', 'Drama', 'Fantasy',
+                                     'Film-Noir', 'Horror', 'Musical', 'Mystery', 'Romance', 
+                                     'Sci-Fi', 'Thriller', 'War', 'Western']
+                        genres = [g for g in genre_cols if selected_movie[g] == 1]
+                        if genres:
+                            st.markdown(f"**🎭 Genres:** {', '.join(genres)}")
+                        
+                        # Rating info
+                        movie_ratings = ratings[ratings['item_id'] == st.session_state.selected_movie_id]
+                        if len(movie_ratings) > 0:
+                            avg_rating = movie_ratings['rating'].mean()
+                            num_ratings = len(movie_ratings)
+                            st.markdown(f"**⭐ Average Rating:** {avg_rating:.2f}/5.0 ({num_ratings} ratings)")
+                    
+                    st.markdown("---")
+                    
+                    # Generate similar movie recommendations
+                    st.markdown(f"### 🎯 Because you like **{selected_movie['title']}**, you might also enjoy:")
+                    
+                    with st.spinner("🔮 Finding similar movies..."):
+                        similar_movie_ids = get_similar_movies(st.session_state.selected_movie_id, num_similar)
+                    
+                    if len(similar_movie_ids) == 0:
+                        st.warning("Sorry, couldn't find similar movies. Try another selection!")
+                    else:
+                        # Display recommendations
+                        if show_posters_movie:
+                            # Grid layout with posters
+                            cols_per_row = 4
+                            for i in range(0, len(similar_movie_ids), cols_per_row):
+                                cols = st.columns(cols_per_row)
+                                for j, movie_id in enumerate(similar_movie_ids[i:i+cols_per_row]):
+                                    movie_info = get_movie_info(movie_id)
+                                    if movie_info is not None:
+                                        with cols[j]:
+                                            st.image(get_movie_poster(movie_info['title']), use_container_width=True)
+                                            
+                                            # Movie title
+                                            st.markdown(f"**{movie_info['title']}**")
+                                            
+                                            # Genres
+                                            genres = [g for g in genre_cols if movie_info[g] == 1]
+                                            genre_str = ", ".join(genres[:2]) if genres else "Unknown"
+                                            st.caption(f"🎭 {genre_str}")
+                                            
+                                            # Rating
+                                            movie_ratings = ratings[ratings['item_id'] == movie_id]
+                                            if len(movie_ratings) > 0:
+                                                avg_rating = movie_ratings['rating'].mean()
+                                                st.caption(f"⭐ {avg_rating:.1f}/5.0")
+                                            
+                                            # Similarity score
+                                            similarity = item_similarity_df.loc[st.session_state.selected_movie_id, movie_id]
+                                            st.progress(similarity, text=f"{similarity:.0%} match")
+                                            
+                                            st.markdown("---")
+                        else:
+                            # List layout
+                            for rank, movie_id in enumerate(similar_movie_ids, 1):
+                                movie_info = get_movie_info(movie_id)
+                                if movie_info is not None:
+                                    col1, col2, col3, col4 = st.columns([0.5, 3, 1, 1])
+                                    
+                                    with col1:
+                                        st.markdown(f"### {rank}")
+                                    
+                                    with col2:
+                                        st.markdown(f"**{movie_info['title']}**")
+                                        genres = [g for g in genre_cols if movie_info[g] == 1]
+                                        genre_str = ", ".join(genres[:3]) if genres else "Unknown"
+                                        st.caption(f"🎭 {genre_str}")
+                                    
+                                    with col3:
+                                        movie_ratings = ratings[ratings['item_id'] == movie_id]
+                                        if len(movie_ratings) > 0:
+                                            avg_rating = movie_ratings['rating'].mean()
+                                            num_ratings = len(movie_ratings)
+                                            st.metric("Rating", f"{avg_rating:.1f}⭐", f"{num_ratings} reviews")
+                                    
+                                    with col4:
+                                        similarity = item_similarity_df.loc[st.session_state.selected_movie_id, movie_id]
+                                        st.metric("Match", f"{similarity:.0%}")
+                                    
+                                    st.markdown("---")
+                        
+                        # Add a "Try Another Movie" button
+                        if st.button("🔄 Try Another Movie", key="reset_movie"):
+                            del st.session_state.selected_movie_id
+                            del st.session_state.selected_movie_title
+                            st.rerun()
 
 # ============================================================================
 # PAGE 3: DATA INSIGHTS
