@@ -1,3 +1,8 @@
+"""
+Movie Recommendation System - Streamlit App
+Complete application with user-based and movie-based recommendations
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -33,7 +38,7 @@ st.markdown("""
         margin-bottom: 2rem;
     }
     .metric-card {
-        background-color: #0A1172;
+        background-color: #151B54;
         padding: 1.5rem;
         border-radius: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -53,7 +58,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # LOAD MODELS AND DATA
-
 
 @st.cache_data
 def load_data():
@@ -86,7 +90,6 @@ svd_model = models['svd_model']
 train_matrix = models['train_matrix']
 movies = models['movies']
 ratings = models['ratings']
-
 
 # HELPER FUNCTIONS
 
@@ -261,7 +264,7 @@ def item_based_recommendations(user_id, n=10):
     
     if len(user_ratings) == 0:
         popular = ratings.groupby('item_id').size().sort_values(ascending=False).head(n)
-        return popular.index.tolist()
+        return popular.index.tolist(), {}
     
     item_scores = {}
     for _, row in user_ratings.iterrows():
@@ -277,14 +280,26 @@ def item_based_recommendations(user_id, n=10):
     
     if len(item_scores) == 0:
         popular = ratings.groupby('item_id').size().sort_values(ascending=False).head(n)
-        return popular.index.tolist()
+        return popular.index.tolist(), {}
     
     recommendations = sorted(item_scores.items(), key=lambda x: x[1], reverse=True)[:n]
-    return [item_id for item_id, score in recommendations]
+    
+    # Calculate similarity scores for each recommendation
+    similarity_scores = {}
+    for item_id, score in recommendations:
+        # Find max similarity with user's rated items
+        max_sim = 0
+        for _, row in user_ratings.iterrows():
+            rated_item = row['item_id']
+            if rated_item in item_similarity_df.index and item_id in item_similarity_df.columns:
+                sim = item_similarity_df.loc[rated_item, item_id]
+                max_sim = max(max_sim, sim)
+        similarity_scores[item_id] = max_sim
+    
+    return [item_id for item_id, score in recommendations], similarity_scores
 
-# ============================================================================
+
 # SIDEBAR
-# ============================================================================
 
 st.sidebar.title("🎯 Navigation")
 page = st.sidebar.radio("Go to", [
@@ -292,7 +307,7 @@ page = st.sidebar.radio("Go to", [
     " Get Recommendations",
     " Data Insights",
     " Model Performance",
-    
+   
 ])
 
 st.sidebar.markdown("---")
@@ -302,9 +317,9 @@ st.sidebar.metric("Total Users", f"{ratings['user_id'].nunique():,}")
 st.sidebar.metric("Total Ratings", f"{len(ratings):,}")
 st.sidebar.metric("Avg Rating", f"{ratings['rating'].mean():.2f}/5.0")
 
-
+# ============================================================================
 # PAGE 1: HOME
-
+# ============================================================================
 
 if page == " Home":
     st.markdown('<div class="main-header">🎬 Movie Recommendation System</div>', unsafe_allow_html=True)
@@ -384,9 +399,9 @@ elif page == " Get Recommendations":
     )
     
     st.markdown("---")
-    
+
     # MODE 1: USER-BASED RECOMMENDATIONS
-   
+
     if rec_mode == " User-Based Recommendations":
         st.markdown("### Select a user to see personalized recommendations")
         
@@ -435,7 +450,7 @@ elif page == " Get Recommendations":
             st.markdown(f"### 🎯 Recommended for User {st.session_state.user_id}")
             
             with st.spinner("Generating recommendations..."):
-                recommended_ids = item_based_recommendations(st.session_state.user_id, st.session_state.num_recs)
+                recommended_ids, similarity_scores = item_based_recommendations(st.session_state.user_id, st.session_state.num_recs)
             
             genre_cols = ['Action', 'Adventure', 'Animation', 'Children', 
                          'Comedy', 'Crime', 'Documentary', 'Drama', 'Fantasy',
@@ -461,6 +476,11 @@ elif page == " Get Recommendations":
                                 
                                 st.caption(f"🎭 {genre_str}")
                                 st.caption(f"⭐ {avg_rating:.1f}/5")
+                                
+                                # Add similarity score
+                                if movie_id in similarity_scores:
+                                    similarity = similarity_scores[movie_id]
+                                    st.progress(float(similarity), text=f"{similarity:.0%} match")
             else:
                 for i, movie_id in enumerate(recommended_ids, 1):
                     movie_info = get_movie_info(movie_id)
@@ -472,7 +492,7 @@ elif page == " Get Recommendations":
                         avg_rating = movie_ratings['rating'].mean() if len(movie_ratings) > 0 else 0
                         num_ratings = len(movie_ratings)
                         
-                        col1, col2, col3 = st.columns([0.5, 3, 1])
+                        col1, col2, col3, col4 = st.columns([0.5, 3, 1, 1])
                         with col1:
                             st.markdown(f"### {i}")
                         with col2:
@@ -480,11 +500,15 @@ elif page == " Get Recommendations":
                             st.caption(f"🎭 {genre_str}")
                         with col3:
                             st.metric("Rating", f"{avg_rating:.1f}⭐", f"{num_ratings} votes")
+                        with col4:
+                            if movie_id in similarity_scores:
+                                similarity = similarity_scores[movie_id]
+                                st.metric("Match", f"{similarity:.0%}")
                         st.markdown("---")
     
-  
+
     # MODE 2: MOVIE-BASED RECOMMENDATIONS
-  
+    
     else:
         st.markdown("### 🎬 Search for ANY movie and get recommendations!")
         st.info("💡 Search for any movie - even new releases! We'll find similar movies for you.")
@@ -660,7 +684,7 @@ elif page == " Get Recommendations":
                                                     st.caption(f"⭐ {avg_rating:.1f}/5.0")
                                                 
                                                 similarity = item_similarity_df.loc[st.session_state.selected_movie_id, movie_id]
-                                                st.progress(similarity, text=f"{similarity:.0%} match")
+                                                st.progress(float(similarity), text=f"{similarity:.0%} match")
                             else:
                                 for rank, movie_id in enumerate(similar_movie_ids, 1):
                                     movie_info = get_movie_info(movie_id)
@@ -955,5 +979,4 @@ elif page == " Model Performance":
     best_idx = comparison_df['Precision@10'].idxmax()
     best_model = comparison_df.iloc[best_idx]['Model']
     st.success(f"🏆 **Best Model: {best_model}**")
-
 
