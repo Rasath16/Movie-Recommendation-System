@@ -1,8 +1,3 @@
-"""
-Movie Recommendation System - Streamlit App
-Complete application with user-based and movie-based recommendations
-"""
-
 import streamlit as st
 import pandas as pd
 import numpy as np

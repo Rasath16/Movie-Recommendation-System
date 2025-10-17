@@ -60,9 +60,9 @@ movie-recommendation-system/
 │
 ├── u.data                          # Raw ratings data
 ├── u.item                          # Movie metadata
-├── 1_data_exploration.py           # EDA script
-├── 2_model_training.py             # Model training
-├── streamlit_app.py                # Web application
+├── EDA_notebook.ipynb              # EDA script
+├── Model_Training_notebook.ipynb   # Model training
+├── app.py                # Web application
 ├── recommendation_models.pkl       # Trained models
 ├── model_comparison.csv            # Performance metrics
 ├── requirements.txt                # Dependencies
