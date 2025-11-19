@@ -1,11 +1,6 @@
-Here is the fully updated `README.md` file.
-
-I have updated the **Models** section to mark the "Hybrid" model as the new winner and completely replaced the **Model Performance** table with your latest, high-quality results (Precision, Recall, NDCG).
-
-````markdown
 # 🎬 Movie Recommendation System
 
-An intelligent movie recommendation system using collaborative filtering with 4 ML models, TMDb API integration, and an interactive Streamlit dashboard.
+An intelligent movie recommendation system using collaborative filtering with 4 ML models, TMDb API integration, and interactive Streamlit dashboard.
 
 ![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.25+-red.svg)
