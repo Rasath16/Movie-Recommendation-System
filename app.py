@@ -56,7 +56,6 @@ st.markdown("""
 
 @st.cache_data
 def load_data():
-    """Load models and data"""
     try:
         with open('recommendation_models.pkl', 'rb') as f:
             models = pickle.load(f)
@@ -70,7 +69,6 @@ def load_data():
 
 @st.cache_data
 def load_content_based_db():
-    """Load pre-built content recommendation database"""
     try:
         with open('tmdb_content_recommendations.pkl', 'rb') as f:
             return pickle.load(f)
@@ -90,7 +88,6 @@ ratings = models['ratings']
 
 @st.cache_data
 def get_movie_poster(title):
-    """Get movie poster from TMDb API with caching"""
     try:
         TMDB_API_KEY = "7891144d4b5142e348389f3caeef27f3"
         url = "https://api.themoviedb.org/3/search/movie"
@@ -131,26 +128,22 @@ def get_movie_poster(title):
         return f"https://via.placeholder.com/300x450/667eea/ffffff?text={safe_title}"
 
 def get_tmdb_poster(poster_path):
-    """Get full poster URL from TMDb"""
     if poster_path:
         return f"https://image.tmdb.org/t/p/w300{poster_path}"  # w300 for smaller size
     return None
 
 def get_movie_info(movie_id):
-    """Get movie information"""
     movie = movies[movies['movie_id'] == movie_id]
     if len(movie) > 0:
         return movie.iloc[0]
     return None
 
 def get_user_rated_movies(user_id, n=5):
-    """Get movies rated by user"""
     user_ratings = ratings[ratings['user_id'] == user_id].sort_values('rating', ascending=False).head(n)
     return user_ratings
 
 @st.cache_data(ttl=3600)
 def search_tmdb_movies(query):
-    """Search ANY movie on TMDb"""
     try:
         TMDB_API_KEY = "7891144d4b5142e348389f3caeef27f3"
         url = "https://api.themoviedb.org/3/search/movie"
@@ -184,14 +177,12 @@ def search_tmdb_movies(query):
         return pd.DataFrame()
 
 def search_movies(query):
-    """Search movies in dataset AND TMDb API"""
     query_lower = query.lower()
     local_results = movies[movies['title'].str.lower().str.contains(query_lower, na=False)]
     tmdb_results = search_tmdb_movies(query)
     return local_results, tmdb_results
 
 def get_similar_movies(movie_id, n=10):
-    """Get similar movies based on item similarity"""
     if movie_id not in item_similarity_df.index:
         return []
     
@@ -199,7 +190,6 @@ def get_similar_movies(movie_id, n=10):
     return similar_movies.index.tolist()
 
 def get_content_based_recommendations(movie_title, n=10):
-    """Get recommendations using content-based filtering"""
     db = load_content_based_db()
     
     if db is None:
@@ -225,7 +215,6 @@ def get_content_based_recommendations(movie_title, n=10):
 
 @st.cache_data
 def get_tmdb_movie_details(tmdb_id):
-    """Get detailed movie info from TMDb"""
     try:
         TMDB_API_KEY = "7891144d4b5142e348389f3caeef27f3"
         
@@ -312,9 +301,7 @@ st.sidebar.metric("Total Users", f"{ratings['user_id'].nunique():,}")
 st.sidebar.metric("Total Ratings", f"{len(ratings):,}")
 st.sidebar.metric("Avg Rating", f"{ratings['rating'].mean():.2f}/5.0")
 
-# ============================================================================
 # PAGE 1: HOME
-# ============================================================================
 
 if page == " Home":
     st.markdown('<div class="main-header">🎬 Movie Recommendation System</div>', unsafe_allow_html=True)
@@ -382,7 +369,6 @@ if page == " Home":
 
 
 # PAGE 2: GET RECOMMENDATIONS
-
 
 elif page == " Get Recommendations":
     st.markdown("## 🎬 Get Your Movie Recommendations")
@@ -790,7 +776,6 @@ elif page == " Get Recommendations":
 
 
 # PAGE 3: DATA INSIGHTS
-
 
 elif page == " Data Insights":
     st.markdown("## 📊 Data Insights & Visualizations")
